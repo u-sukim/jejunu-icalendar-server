@@ -16,8 +16,8 @@ export const upload = async (data: string) => {
         Bucket: process.env.AWS_BUCKET_NAME,
         Key: 'calendar.ics',
         Body: data,
-        ContentType: 'text/calendar',
-        ACL: 'public-read'
+        ContentType: 'text/calendar'
+        // ACL 옵션 제거
       })
     );
     console.log('S3 업로드 완료:', response);
@@ -26,4 +26,4 @@ export const upload = async (data: string) => {
     console.error('S3 업로드 실패:', error);
     throw error;
   }
-}
+};
