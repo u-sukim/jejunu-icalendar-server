@@ -1,6 +1,5 @@
 import type { Lecture } from './response';
 
-// 타입 정의 (필요에 따라 수정)
 export type LectureStatus = '온라인(녹화)' | '온라인(실시간)' | '보강' | '휴강' | '일반';
 export type ReconstructedLecture = {
   startTime: string;
@@ -25,6 +24,7 @@ export function parseLectureStatus(lecture: Lecture): LectureStatus {
     if (isLiveStreamLecture) return '온라인(실시간)';
     return '보강';
   }
+
   return '일반';
 }
 
@@ -38,29 +38,24 @@ export function formatToICalDate(date: string, time: string) {
 }
 
 function iCalDateStringToDateObject(date: string) {
-  // 입력 예: '20240909T090000'
-  const formatted = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T${date.slice(9, 11)}:${date.slice(11, 13)}:${date.slice(13, 15)}`;
-  return new Date(formatted);
+  const dateString = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T${date.slice(9, 11)}:${date.slice(11, 13)}:${date.slice(13, 15)}`;
+  return new Date(dateString);
 }
 
 /**
- * 변환 로직에서 기존에는 '휴강' 상태인 강의를 무조건 제거하고 있었음.
- * 하지만 미래 강의(예: 2학년 1학기)는 아직 진행되지 않았으므로, '휴강'으로 표시되더라도 포함시키도록 수정합니다.
+ * 미래 강의(아직 진행되지 않은 강의)의 경우 '휴강'이라 하더라도 포함시키도록 합니다.
  */
 export function reconstructedLecture(
   lecture: Lecture,
   status: LectureStatus
 ): ReconstructedLecture | null {
-  // lecture.lsnYmd는 'YYYYMMDD' 형식임. 이를 Date 객체로 변환.
   const year = lecture.lsnYmd.slice(0, 4);
   const month = lecture.lsnYmd.slice(4, 6);
   const day = lecture.lsnYmd.slice(6, 8);
   const eventDate = new Date(`${year}-${month}-${day}`);
 
   const today = new Date();
-
-  // 만약 강의 상태가 '휴강'이고, 이벤트 날짜가 과거라면 필터링(제거)
-  // 미래 강의라면 '휴강'이어도 포함시킵니다.
+  // 과거 날짜에 대해서만 '휴강' 강의는 제거
   if (status === '휴강' && eventDate < today) return null;
 
   const startTime = formatToICalDate(lecture.lsnYmd, lecture.bgngHr);
@@ -78,28 +73,25 @@ export function reconstructedLecture(
   };
 }
 
+/**
+ * 동일한 강의명과 날짜를 가진 이벤트를 병합합니다.
+ * 만약 두 이벤트 중 하나라도 '일반'이 아닌 상태라면 그 상태를 사용합니다.
+ */
 export function mergeLectures(lectures: ReconstructedLecture[]) {
   return lectures
     .filter((lecture) => lecture !== null)
-    .reduce((reducing, lecture) => {
-      if (reducing.length === 0) return [lecture];
-      const previousLecture = reducing.at(-1)!;
-
-      if (
-        previousLecture.name === lecture.name &&
-        previousLecture.date === lecture.date
-      ) {
-        const status = (() => {
-          if (previousLecture.status !== '일반') return previousLecture.status;
-          if (lecture.status !== '일반') return lecture.status;
-          return '일반';
-        })();
-        previousLecture.endTime = lecture.endTime;
+    .reduce((merged, lecture) => {
+      if (merged.length === 0) return [lecture];
+      const last = merged.at(-1)!;
+      if (last.name === lecture.name && last.date === lecture.date) {
+        // 병합: 상태가 '일반'이 아니면 그 값을 사용
+        last.status = last.status !== '일반' ? last.status : (lecture.status !== '일반' ? lecture.status : '일반');
+        // 종료 시간은 마지막 이벤트의 시간을 적용
+        last.endTime = lecture.endTime;
       } else {
-        reducing.push(lecture);
+        merged.push(lecture);
       }
-
-      return reducing;
+      return merged;
     }, [] as Exclude<ReconstructedLecture, null>[]);
 }
 
@@ -123,7 +115,6 @@ export function iCalConverter(lectures: Lecture[]) {
     )
     .map((lecture) => {
       const status = parseLectureStatus(lecture);
-      // 디버깅 로그 추가: 강의명, 날짜, 상태 출력
       console.log(`변환 중: ${lecture.sbjctNm}, 날짜: ${lecture.lsnYmd}, 상태: ${status}`);
       return reconstructedLecture(lecture, status);
     })
@@ -137,7 +128,8 @@ export function iCalConverter(lectures: Lecture[]) {
         iCalDateStringToDateObject(b.startTime).getTime()
     );
 
-  const events = mergeLectures(reconstructedLectures)
+  const mergedLectures = mergeLectures(reconstructedLectures);
+  const events = mergedLectures
     .map(lectureToICalEvent)
     .join('\n\n');
   return `BEGIN:VCALENDAR
