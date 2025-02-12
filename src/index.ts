@@ -41,7 +41,7 @@ import { ResponseTObject } from './response';
 
   console.log('시간표 데이터 요청 중...');
   const response = await page.goto(
-    'https://portal.jejunu.ac.kr/api/patis/timeTable.jsp?sttLsnYmd=20240902&endLsnYmd=20241221',
+    'https://portal.jejunu.ac.kr/api/patis/timeTable.jsp?sttLsnYmd=20250304&endLsnYmd=20250623',
     {
       waitUntil: 'networkidle0',
       timeout: 60000
